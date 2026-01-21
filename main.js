@@ -1,102 +1,178 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
-// Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101010);
 
-// Camera setup
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-camera.position.set(0, 20, 40);
+// ===== Camera (top-down eagle view) =====
+const camera = new THREE.PerspectiveCamera(
+  75, window.innerWidth/window.innerHeight, 0.1, 1000
+);
+camera.position.set(0,0,20);
+camera.lookAt(0,0,0);
 
-// Renderer setup
-const renderer = new THREE.WebGLRenderer({antialias: true});
+const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Controls
-const controls = new OrbitControls(camera, renderer.domElement);
+// ===== Center node =====
+const centerNode = new THREE.Mesh(
+  new THREE.SphereGeometry(0.5,40,40),
+  new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+);
+centerNode.position.set(0,0,0);
+scene.add(centerNode);
 
-// Lighting
-const light = new THREE.PointLight(0xffffff, 1);
-light.position.set(50, 50, 50);
-scene.add(light);
-scene.add(new THREE.AmbientLight(0x404040, 1));
+// ===== Secondary nodes =====
+const secondaryNodes = [];
+const numSecondary = 1;
+const minRadius = 8;
+const maxRadius = 20;
+const minDistance = 8;
 
-// Materials
-const centralMaterial = new THREE.MeshPhongMaterial({ color: 0xff9900 }); // central node
-const partnerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ccff });
-const endUserMaterial = new THREE.MeshPhongMaterial({ color: 0x66ff66 });
-const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-
-// Nodes
-const centralNode = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), centralMaterial);
-centralNode.position.set(0, 0, 0);
-scene.add(centralNode);
-
-const partners = [];
-const partnerCount = 5;
-for (let i = 0; i < partnerCount; i++) {
-    const angle = (i / partnerCount) * Math.PI * 2;
-    const x = 10 * Math.cos(angle);
-    const z = 10 * Math.sin(angle);
-    const node = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), partnerMaterial);
-    node.position.set(x, 0, z);
-    partners.push(node);
-    scene.add(node);
-
-    // Line from central to partner
-    const points = [centralNode.position, node.position];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(geometry, lineMaterial);
-    scene.add(line);
-}
-
-const endUsers = [];
-const endUserCount = 10;
-for (let i = 0; i < endUserCount; i++) {
-    const angle = (i / endUserCount) * Math.PI * 2;
-    const radius = 20;
-    const x = radius * Math.cos(angle);
-    const z = radius * Math.sin(angle);
-    const node = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), endUserMaterial);
-    node.position.set(x, 0, z);
-    endUsers.push(node);
-    scene.add(node);
-
-    // Connect to random partner
-    const partner = partners[Math.floor(Math.random() * partnerCount)];
-    const points = [partner.position, node.position];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(geometry, lineMaterial);
-    scene.add(line);
-}
-
-// Animate energy flow
-// TODO: Research Space/Time Complexity to understand performance implications
-function animateFlow() {
-    const time = Date.now() * 0.002;
-    partners.forEach((partner, i) => {
-        partner.position.y = Math.sin(time + i) * 1.5;
+function randomPosition(existingNodes) {
+  let pos, safe = false;
+  while(!safe){
+    const angle = Math.random()*Math.PI*2;
+    const radius = minRadius + Math.random()*(maxRadius - minRadius);
+    const x = Math.cos(angle)*radius;
+    const y = Math.sin(angle)*radius;
+    pos = {x,y};
+    safe = existingNodes.every(n=>{
+      const dx = x - n.position.x;
+      const dy = y - n.position.y;
+      return Math.sqrt(dx*dx + dy*dy) >= minDistance;
     });
-    endUsers.forEach((user, i) => {
-        user.position.y = Math.sin(time + i * 0.5) * 0.5;
-    });
+  }
+  return pos;
 }
 
-// Resize handler
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+const secondaryLines = []; // center -> secondary
+
+for(let i=0;i<numSecondary;i++){
+  const secNode = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4,20,20),
+    new THREE.MeshBasicMaterial({ color: 0x0000ff }) // blue
+  );
+  const pos = randomPosition(secondaryNodes);
+  secNode.position.set(pos.x,pos.y,0);
+  secNode.tertiaryNodes = []; // attach an array of tertiary nodes to this secondary
+  secNode.linesToTertiary = []; // attach lines
+  scene.add(secNode);
+  secondaryNodes.push(secNode);
+
+  // line from center -> secondary
+  const lineGeom = new THREE.BufferGeometry().setFromPoints([centerNode.position.clone(), secNode.position.clone()]);
+  const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth:4 }));
+  scene.add(line);
+  secondaryLines.push({line, secNode});
+}
+
+// ===== Tertiary nodes around each secondary =====
+const tertiaryMinRadius = 1;
+const tertiaryMaxRadius = 15;
+const tertiaryPerSecondary = 5;
+
+secondaryNodes.forEach(secNode=>{
+  const existing = [];
+  for(let i=0;i<tertiaryPerSecondary;i++){
+    let pos, safe=false;
+    while(!safe){
+      const angle = Math.random()*Math.PI*2;
+      const radius = tertiaryMinRadius + Math.random()*(tertiaryMaxRadius - tertiaryMinRadius);
+      const x = secNode.position.x + Math.cos(angle)*radius;
+      const y = secNode.position.y + Math.sin(angle)*radius;
+      pos = {x,y};
+      safe = existing.every(t=>{
+        const dx = x-t.position.x;
+        const dy = y-t.position.y;
+        return Math.sqrt(dx*dx + dy*dy) >= 0.15;
+      });
+    }
+
+    const tNode = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2,10,10),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 }) // red
+    );
+    tNode.position.set(pos.x,pos.y,0);
+    scene.add(tNode);
+    secNode.tertiaryNodes.push(tNode);
+    existing.push(tNode);
+
+    // line secondary -> tertiary
+    const tLineGeom = new THREE.BufferGeometry().setFromPoints([secNode.position.clone(), tNode.position.clone()]);
+    const tLine = new THREE.Line(tLineGeom, new THREE.LineBasicMaterial({ color:0xffffff, linewidth:1 }));
+    scene.add(tLine);
+    secNode.linesToTertiary.push(tLine);
+  }
 });
 
-// Render loop
-function animate() {
-    requestAnimationFrame(animate);
-    animateFlow();
-    controls.update();
-    renderer.render(scene, camera);
+// ===== Raycaster for dragging secondary nodes =====
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let selectedNode = null;
+let offset = new THREE.Vector3();
+
+function getMouseXY(event){
+  mouse.x = (event.clientX / window.innerWidth)*2 - 1;
+  mouse.y = - (event.clientY / window.innerHeight)*2 + 1;
 }
 
+window.addEventListener('mousedown',(event)=>{
+  getMouseXY(event);
+  raycaster.setFromCamera(mouse,camera);
+  const intersects = raycaster.intersectObjects(secondaryNodes);
+  if(intersects.length>0){
+    selectedNode = intersects[0].object;
+    offset.copy(intersects[0].point).sub(selectedNode.position);
+  }
+});
+
+window.addEventListener('mousemove',(event)=>{
+  if(!selectedNode) return;
+  getMouseXY(event);
+  raycaster.setFromCamera(mouse,camera);
+  const planeZ = new THREE.Plane(new THREE.Vector3(0,0,1),0);
+  const intersect = new THREE.Vector3();
+  raycaster.ray.intersectPlane(planeZ,intersect);
+  if(intersect){
+    const dx = intersect.x - offset.x - selectedNode.position.x;
+    const dy = intersect.y - offset.y - selectedNode.position.y;
+    selectedNode.position.set(intersect.x - offset.x, intersect.y - offset.y, 0);
+
+    // move only its own tertiary nodes
+    selectedNode.tertiaryNodes.forEach(tNode=>{
+      tNode.position.x += dx;
+      tNode.position.y += dy;
+    });
+  }
+});
+
+window.addEventListener('mouseup',()=>{ selectedNode=null; });
+
+// ===== Zoom =====
+window.addEventListener('wheel',(event)=>{
+  camera.position.z += event.deltaY*0.05;
+  camera.position.z = Math.max(5, Math.min(30,camera.position.z));
+});
+
+// ===== Animation =====
+function animate(){
+  requestAnimationFrame(animate);
+
+  // update lines from center -> secondary
+  secondaryLines.forEach(obj=>{
+    obj.line.geometry.setFromPoints([centerNode.position.clone(), obj.secNode.position.clone()]);
+    obj.line.geometry.attributes.position.needsUpdate = true;
+  });
+
+  // update lines from secondary -> tertiary
+  secondaryNodes.forEach(secNode=>{
+    secNode.linesToTertiary.forEach((line,i)=>{
+      const tNode = secNode.tertiaryNodes[i];
+      line.geometry.setFromPoints([secNode.position.clone(), tNode.position.clone()]);
+      line.geometry.attributes.position.needsUpdate = true;
+    });
+  });
+
+  renderer.render(scene,camera);
+}
 animate();
