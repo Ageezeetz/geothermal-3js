@@ -109,6 +109,12 @@ for (let i = 0; i < numSecondary; i++) {
         scene.add(tLine);
         secNode.linesToTertiary.push(tLine);
     }
+
+    secNode.userData = {
+        name: "Drill Team " + (i + 1),
+        status: "Excavating Area " + String.fromCharCode(65 + i),
+        isCompany: true // A flag so we know it's clickable
+    };
 }
 
 // ===== Interaction =====
@@ -118,13 +124,35 @@ let selectedNode = null;
 let isPanning = false;
 
 window.addEventListener('mousedown', (e) => {
-    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(secondaryNodes);
-    if (intersects.length > 0) selectedNode = intersects[0].object;
-    else isPanning = true;
-});
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(secondaryNodes);
+
+        if (intersects.length > 0) {
+            selectedNode = intersects[0].object;
+            isPanning = false; // Disable panning so we don't move the map while clicking
+
+            // --- NEW: Update the Info Panel ---
+            const data = selectedNode.userData;
+            const panel = document.getElementById('info-panel');
+            
+            // Fill in the text
+            document.getElementById('comp-name').innerText = data.name;
+            document.getElementById('comp-status').innerText = "Status: " + data.status;
+            
+            // Make the box visible
+            panel.style.display = 'block';
+
+        } else {
+            selectedNode = null;
+            isPanning = true;
+            
+            // Hide the box if we click the empty dark background
+            document.getElementById('info-panel').style.display = 'none';
+        }
+    });
 
 window.addEventListener('mousemove', (e) => {
     const vFOV = THREE.MathUtils.degToRad(camera.fov);

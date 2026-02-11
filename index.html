@@ -9,6 +9,22 @@
   </style>
 </head>
 <body>
+  <div id="info-panel" style="
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 200px;
+      padding: 15px;
+      background: rgba(0, 40, 60, 0.8);
+      border: 2px solid #00ffff;
+      color: #00ffff;
+      font-family: 'Courier New', monospace;
+      display: none;
+      pointer-events: none;">
+      <h3 id="comp-name" style="margin: 0 0 10px 0;">Company Name</h3>
+      <p id="comp-status" style="font-size: 12px; margin: 0;">Status: Ready</p>
+  </div>
+
   <script type="module" src="./main.js"></script>
 </body>
 </html>
