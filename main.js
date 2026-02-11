@@ -3,6 +3,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0a); 
 
+// ===== Camera & Renderer =====
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 0.1, 1000);
 camera.position.set(0, 0, 60);
 
@@ -11,6 +12,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
+// Helper for Emoji Icons
 function createEmojiTexture(emoji) {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
@@ -21,6 +23,8 @@ function createEmojiTexture(emoji) {
     ctx.fillText(emoji, 64, 64);
     return new THREE.CanvasTexture(canvas);
 }
+
+// ===== Nodes & Connections =====
 
 // 1. Center Node (HQ)
 const centerNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏢') }));
@@ -36,71 +40,46 @@ for (let i = 0; i < numSecondary; i++) {
     const secNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏗️') }));
     secNode.scale.set(2, 2, 1); 
     
-    // Collision radius for secondary nodes (derived from sprite scale)
+    // Collision logic for spawning
     const secNodeRadius = Math.max(secNode.scale.x, secNode.scale.y) * 1.8;
     let validPosition = false;
     let attempts = 0;
-    const maxAttempts = 100;
+    const maxAttempts = 250;
     
     while (!validPosition && attempts < maxAttempts) {
-        // Random angle and distance from center
         const angle = Math.random() * Math.PI * 2;
-        const dist = 12 + Math.random() * 18; // Random distance range around center
-        
-        const candidatePos = {
-            x: Math.cos(angle) * dist,
-            y: Math.sin(angle) * dist
-        };
-        
-        // Check collision with center node (approximate as radius ~3)
+        const dist = 10 + Math.random() * 18; 
+        const candidatePos = { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist };
         const centerDist = Math.sqrt(candidatePos.x * candidatePos.x + candidatePos.y * candidatePos.y);
-        if (centerDist < 3 + secNodeRadius) {
-            attempts++;
-            continue;
-        }
+        if (centerDist < 3 + secNodeRadius) { attempts++; continue; }
         
-        // Check collision with all previously placed secondary nodes (use each node's stored radius)
         let colliding = false;
         for (let k = 0; k < secondaryNodes.length; k++) {
             const otherNode = secondaryNodes[k];
-            const otherRadius = otherNode.userData && otherNode.userData.radius ? otherNode.userData.radius : secNodeRadius;
+            const otherRadius = otherNode.userData.radius || secNodeRadius;
             const dx = candidatePos.x - otherNode.position.x;
             const dy = candidatePos.y - otherNode.position.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < secNodeRadius + otherRadius) {
+            if (Math.sqrt(dx * dx + dy * dy) < secNodeRadius + otherRadius) {
                 colliding = true;
                 break;
             }
         }
-        
-        if (!colliding) {
-            secNode.position.set(candidatePos.x, candidatePos.y, 0);
-            validPosition = true;
-        }
-        
+        if (!colliding) { secNode.position.set(candidatePos.x, candidatePos.y, 0); validPosition = true; }
         attempts++;
     }
     
-    // Fallback position if couldn't find valid spot
-    if (!validPosition) {
-        const angle = (i / numSecondary) * Math.PI * 2;
-        const dist = 20;
-        secNode.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist, 0);
-    }
-    
-    // store radius for future collision checks
-    secNode.userData = secNode.userData || {};
-    secNode.userData.radius = secNodeRadius;
+    secNode.userData = { radius: secNodeRadius };
 
-    // --- SIMPLE CIRCUMFERENCE ---
-    const radius = 4;
-    const curve = new THREE.EllipseCurve(0, 0, radius, radius);
+    // --- MOVABLE BUBBLE ---
+    const bubbleRadius = 3.5;
+    const curve = new THREE.EllipseCurve(0, 0, bubbleRadius, bubbleRadius);
     const points = curve.getPoints(50);
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 });
+    const material = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
     const circumference = new THREE.LineLoop(geometry, material);
     
+    // ATTACH TO secNode: Now it moves wherever the Digger goes
+    circumference.raycast = () => {}; 
     secNode.add(circumference);
     
     secNode.tertiaryNodes = [];
@@ -108,6 +87,7 @@ for (let i = 0; i < numSecondary; i++) {
     scene.add(secNode);
     secondaryNodes.push(secNode);
 
+    // HQ Line
     const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), secNode.position]);
     const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
     scene.add(line);
@@ -116,21 +96,16 @@ for (let i = 0; i < numSecondary; i++) {
     // 3. Tertiary Nodes (Homes)
     for (let j = 0; j < tertiaryPerSecondary; j++) {
         const home = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏠') }));
-        home.scale.set(1.5, 1.5, 1);
-        
+        home.scale.set(1.2, 1.2, 1);
         const tAngle = Math.random() * Math.PI * 2;
-        const tDist = 2 + Math.random() * 4; 
-        home.position.set(
-            secNode.position.x + Math.cos(tAngle) * tDist,
-            secNode.position.y + Math.sin(tAngle) * tDist,
-            0
-        );
+        const tDist = 2 + Math.random() * 3; 
+        home.position.set(secNode.position.x + Math.cos(tAngle) * tDist, secNode.position.y + Math.sin(tAngle) * tDist, 0);
         
         scene.add(home);
         secNode.tertiaryNodes.push(home);
 
         const tLineGeom = new THREE.BufferGeometry().setFromPoints([secNode.position, home.position]);
-        const tLine = new THREE.Line(tLineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 }));
+        const tLine = new THREE.Line(tLineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1 }));
         scene.add(tLine);
         secNode.linesToTertiary.push(tLine);
     }
@@ -147,11 +122,8 @@ window.addEventListener('mousedown', (e) => {
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(secondaryNodes);
-    if (intersects.length > 0) {
-        selectedNode = intersects[0].object;
-    } else {
-        isPanning = true;
-    }
+    if (intersects.length > 0) selectedNode = intersects[0].object;
+    else isPanning = true;
 });
 
 window.addEventListener('mousemove', (e) => {
@@ -165,12 +137,19 @@ window.addEventListener('mousemove', (e) => {
         selectedNode.position.x += dx;
         selectedNode.position.y += dy;
 
+        // Homes move with Digger
         selectedNode.tertiaryNodes.forEach((tNode, i) => {
             tNode.position.x += dx;
             tNode.position.y += dy;
             selectedNode.linesToTertiary[i].geometry.setFromPoints([selectedNode.position, tNode.position]);
+            selectedNode.linesToTertiary[i].geometry.attributes.position.needsUpdate = true;
         });
+        
+        // HQ Line updates
         selectedNode.mainLine.geometry.setFromPoints([new THREE.Vector3(0,0,0), selectedNode.position]);
+        selectedNode.mainLine.geometry.attributes.position.needsUpdate = true;
+        
+        // BUBBLE moves automatically because it is a child of selectedNode
     }
 
     if (isPanning) {
@@ -180,13 +159,12 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', () => { selectedNode = null; isPanning = false; });
-
 window.addEventListener('wheel', (e) => {
     camera.position.z += e.deltaY * 0.05;
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, 15, 100);
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z, 15, 120);
 });
 
-function animate(time) {
+function animate() {
     requestAnimationFrame(animate);
     renderer.render(scene, camera);
 }
