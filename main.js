@@ -88,7 +88,12 @@ for (let i = 0; i < numSecondary; i++) {
     secondaryNodes.push(secNode);
 
     // HQ Line
-    const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), secNode.position]);
+    const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), secNode.position.clone().setLength(
+        Math.max(secNode.position.length() - (2 * bubbleRadius), 0))]);
+        
+        // secNode.position.x - bubbleRadius, 
+        // secNode.position.y - bubbleRadius, 
+        // secNode.position.z)]);
     const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
     scene.add(line);
     secNode.mainLine = line;
