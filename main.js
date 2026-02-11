@@ -2,19 +2,14 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const scene = new THREE.Scene();
 
-// ===== 1. Fix for Ovals: Low FOV Camera =====
-// We use a lower FOV (30 instead of 75) and move the Z position further back (50).
-// This flattens perspective distortion so spheres don't look like eggs at the edges.
-const camera = new THREE.PerspectiveCamera(
-  30, window.innerWidth / window.innerHeight, 0.1, 1000
-);
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 0, 50); 
 camera.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true }); // added antialias for smoother edges
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// ===== 2. Fix for Pixelation: Device Pixel Ratio =====
+
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
 document.body.appendChild(renderer.domElement);
 
@@ -108,13 +103,10 @@ secondaryNodes.forEach(secNode => {
   }
 });
 
-// ===== Raycaster & Interaction =====
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let selectedNode = null;
-let offset = new THREE.Vector3();
-
-// New variables for Panning
+let dragOffset = new THREE.Vector3();
 let isPanning = false;
 
 function getMouseXY(event) {
@@ -125,32 +117,31 @@ function getMouseXY(event) {
 window.addEventListener('mousedown', (event) => {
   getMouseXY(event);
   raycaster.setFromCamera(mouse, camera);
+  
   const intersects = raycaster.intersectObjects(secondaryNodes);
-
   if (intersects.length > 0) {
-    // If we clicked a node, start Dragging Node
     selectedNode = intersects[0].object;
-    offset.copy(intersects[0].point).sub(selectedNode.position);
+    dragOffset.copy(intersects[0].point).sub(selectedNode.position);
     document.body.style.cursor = 'grabbing';
-  } else {
-    // If we clicked empty space, start Panning Camera
-    isPanning = true;
-    document.body.style.cursor = 'move';
+    return;
   }
+
+  isPanning = true;
+  document.body.style.cursor = 'move';
 });
 
 window.addEventListener('mousemove', (event) => {
-  // Case A: Dragging a Node
   if (selectedNode) {
     getMouseXY(event);
     raycaster.setFromCamera(mouse, camera);
     const planeZ = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     const intersect = new THREE.Vector3();
     raycaster.ray.intersectPlane(planeZ, intersect);
+    
     if (intersect) {
-      const dx = intersect.x - offset.x - selectedNode.position.x;
-      const dy = intersect.y - offset.y - selectedNode.position.y;
-      selectedNode.position.set(intersect.x - offset.x, intersect.y - offset.y, 0);
+      const dx = intersect.x - dragOffset.x - selectedNode.position.x;
+      const dy = intersect.y - dragOffset.y - selectedNode.position.y;
+      selectedNode.position.set(intersect.x - dragOffset.x, intersect.y - dragOffset.y, 0);
 
       selectedNode.tertiaryNodes.forEach(tNode => {
         tNode.position.x += dx;
@@ -160,15 +151,15 @@ window.addEventListener('mousemove', (event) => {
     return;
   }
 
-  // Case B: Panning the Camera (Background drag)
   if (isPanning) {
-    // Calculate how much the mouse moved in pixels
-    // We scale this speed based on camera distance (zoom level) 
-    // so panning feels natural at any zoom.
-    const panSpeed = camera.position.z * 0.002; 
+    const vFOV = THREE.MathUtils.degToRad(camera.fov);
+    const visibleHeight = 2 * Math.tan(vFOV / 2) * camera.position.z;
     
-    camera.position.x -= event.movementX * panSpeed;
-    camera.position.y += event.movementY * panSpeed;
+    const scale = visibleHeight / window.innerHeight;
+
+    const sensitivity = 0.95; 
+    camera.position.x -= event.movementX * scale * sensitivity;
+    camera.position.y += event.movementY * scale * sensitivity;
   }
 });
 
@@ -178,27 +169,21 @@ window.addEventListener('mouseup', () => {
   document.body.style.cursor = 'default';
 });
 
-// ===== 3. Inverted Zoom =====
 window.addEventListener('wheel', (event) => {
-  // We subtract deltaY instead of adding it to invert the direction
   const zoomSpeed = 0.05;
   camera.position.z -= event.deltaY * zoomSpeed;
   
-  // Adjusted Clamp limits for the new camera distance
   camera.position.z = Math.max(10, Math.min(100, camera.position.z));
 });
 
-// ===== Animation =====
 function animate() {
   requestAnimationFrame(animate);
 
-  // update lines from center -> secondary
   secondaryLines.forEach(obj => {
     obj.line.geometry.setFromPoints([centerNode.position.clone(), obj.secNode.position.clone()]);
     obj.line.geometry.attributes.position.needsUpdate = true;
   });
 
-  // update lines from secondary -> tertiary
   secondaryNodes.forEach(secNode => {
     secNode.linesToTertiary.forEach((line, i) => {
       const tNode = secNode.tertiaryNodes[i];
@@ -211,7 +196,6 @@ function animate() {
 }
 animate();
 
-// Handle Window Resize (Important for crisp text/shapes on resize)
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
