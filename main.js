@@ -6,6 +6,14 @@ scene.background = new THREE.Color(0x0a0a0a);
 // ===== Camera & Renderer =====
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 0.1, 1000);
 camera.position.set(0, 0, 60);
+// UI appears only when camera is zoomed in past this Z position
+const UI_ZOOM_THRESHOLD = 20;
+// Secondary nodes will be placed randomly in an annulus around the center
+const MIN_SECONDARY_DIST = 8; // minimum distance from center for secondary nodes
+const MAX_SECONDARY_DIST = 32; // maximum distance from center for secondary nodes
+// Tertiary nodes will be placed within this radial range from their parent secondary
+const MIN_TERTIARY_FROM_SECONDARY = 1.5;
+const MAX_TERTIARY_FROM_SECONDARY = 5.0;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -32,8 +40,10 @@ centerNode.scale.set(4, 5, 1);
 scene.add(centerNode);
 
 const secondaryNodes = [];
-const numSecondary = 9; 
+const numSecondary = 10; 
 const tertiaryPerSecondary = 50;
+// Color palette for neighborhoods
+const NEIGHBOR_COLORS = [0x00ffff, 0xff7a18, 0x7aff7a, 0xff4db6, 0x7a9bff, 0xffd67a, 0xa27aff];
 
 for (let i = 0; i < numSecondary; i++) {
     // 2. Secondary Node (Digger)
@@ -48,7 +58,7 @@ for (let i = 0; i < numSecondary; i++) {
     
     while (!validPosition && attempts < maxAttempts) {
         const angle = Math.random() * Math.PI * 2;
-        const dist = 10 + Math.random() * 18; 
+        const dist = MIN_SECONDARY_DIST + Math.random() * (MAX_SECONDARY_DIST - MIN_SECONDARY_DIST);
         const candidatePos = { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist };
         const centerDist = Math.sqrt(candidatePos.x * candidatePos.x + candidatePos.y * candidatePos.y);
         if (centerDist < 3 + secNodeRadius) { attempts++; continue; }
@@ -90,10 +100,6 @@ for (let i = 0; i < numSecondary; i++) {
     // HQ Line
     const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), secNode.position.clone().setLength(
         Math.max(secNode.position.length() - (2 * bubbleRadius), 0))]);
-        
-        // secNode.position.x - bubbleRadius, 
-        // secNode.position.y - bubbleRadius, 
-        // secNode.position.z)]);
     const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
     scene.add(line);
     secNode.mainLine = line;
@@ -102,15 +108,47 @@ for (let i = 0; i < numSecondary; i++) {
     for (let j = 0; j < tertiaryPerSecondary; j++) {
         const home = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏠') }));
         home.scale.set(1.2, 1.2, 1);
-        const tAngle = Math.random() * Math.PI * 2;
-        const tDist = 2 + Math.random() * 3; 
-        home.position.set(secNode.position.x + Math.cos(tAngle) * tDist, secNode.position.y + Math.sin(tAngle) * tDist, 0);
-        
+
+        // Place tertiary node randomly around its parent, but avoid other secondary bubbles
+        let placed = false;
+        const homeRadius = Math.max(home.scale.x, home.scale.y) * 0.6;
+        const tertiaryAttempts = 80;
+        for (let a = 0; a < tertiaryAttempts; a++) {
+            const tAngle = Math.random() * Math.PI * 2;
+            const tDist = MIN_TERTIARY_FROM_SECONDARY + Math.random() * (MAX_TERTIARY_FROM_SECONDARY - MIN_TERTIARY_FROM_SECONDARY);
+            const candX = secNode.position.x + Math.cos(tAngle) * tDist;
+            const candY = secNode.position.y + Math.sin(tAngle) * tDist;
+
+            // Ensure tertiary is not inside any other secondary node's bubble
+            let colliding = false;
+            for (let s = 0; s < secondaryNodes.length; s++) {
+                const other = secondaryNodes[s];
+                if (other === secNode) continue;
+                const otherBubble = other.userData?.bubbleRadius || 0;
+                const dx = candX - other.position.x;
+                const dy = candY - other.position.y;
+                if (Math.sqrt(dx * dx + dy * dy) < (otherBubble + homeRadius + 0.5)) { colliding = true; break; }
+            }
+
+            if (!colliding) {
+                home.position.set(candX, candY, 0);
+                placed = true;
+                break;
+            }
+        }
+
+        // Fallback: place close to parent if no valid spot found
+        if (!placed) {
+            const fallbackAngle = Math.random() * Math.PI * 2;
+            const fallbackDist = MIN_TERTIARY_FROM_SECONDARY + Math.random() * (MAX_TERTIARY_FROM_SECONDARY - MIN_TERTIARY_FROM_SECONDARY);
+            home.position.set(secNode.position.x + Math.cos(fallbackAngle) * fallbackDist, secNode.position.y + Math.sin(fallbackAngle) * fallbackDist, 0);
+        }
+
         scene.add(home);
         secNode.tertiaryNodes.push(home);
 
         const tLineGeom = new THREE.BufferGeometry().setFromPoints([secNode.position, home.position]);
-        const tLine = new THREE.Line(tLineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1 }));
+        const tLine = new THREE.Line(tLineGeom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.05 }));
         scene.add(tLine);
         secNode.linesToTertiary.push(tLine);
     }
@@ -118,8 +156,21 @@ for (let i = 0; i < numSecondary; i++) {
     secNode.userData = {
         name: "Drill Team " + (i + 1),
         status: "Excavating Area " + String.fromCharCode(65 + i),
-        isCompany: true // A flag so we know it's clickable
+        isCompany: true, // A flag so we know it's clickable
+        radius: secNodeRadius,
+        bubbleRadius: bubbleRadius
     };
+    // Assign neighborhood color
+    const color = NEIGHBOR_COLORS[i % NEIGHBOR_COLORS.length];
+    secNode.userData.color = color;
+    // Update the line to use dashed material and the neighborhood color
+    const dashed = new THREE.Line(lineGeom, new THREE.LineDashedMaterial({ color: color, dashSize: 1.2, gapSize: 0.8, transparent: false }));
+    dashed.computeLineDistances?.();
+    scene.remove(line);
+    scene.add(dashed);
+    secNode.mainLine = dashed;
+    // Color tertiary lines to match parent
+    secNode.linesToTertiary.forEach(tl => tl.material.color.setHex(color));
 }
 
 // ===== Interaction =====
@@ -127,6 +178,7 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let selectedNode = null;
 let isPanning = false;
+const hoverLabel = document.getElementById('hover-label');
 
 window.addEventListener('mousedown', (e) => {
         mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -139,16 +191,16 @@ window.addEventListener('mousedown', (e) => {
             selectedNode = intersects[0].object;
             isPanning = false; // Disable panning so we don't move the map while clicking
 
-            // --- NEW: Update the Info Panel ---
-            const data = selectedNode.userData;
+            // Show info panel only when zoomed in far enough and clicked node is a partner
+            const data = selectedNode.userData || {};
             const panel = document.getElementById('info-panel');
-            
-            // Fill in the text
-            document.getElementById('comp-name').innerText = data.name;
-            document.getElementById('comp-status').innerText = "Status: " + data.status;
-            
-            // Make the box visible
-            panel.style.display = 'block';
+            if (camera.position.z <= UI_ZOOM_THRESHOLD && data.isCompany) {
+                document.getElementById('comp-name').innerText = data.name || '';
+                document.getElementById('comp-status').innerText = "Status: " + (data.status || '');
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+            }
 
         } else {
             selectedNode = null;
@@ -162,6 +214,28 @@ window.addEventListener('mousedown', (e) => {
 window.addEventListener('mousemove', (e) => {
     const vFOV = THREE.MathUtils.degToRad(camera.fov);
     const scale = (2 * Math.tan(vFOV / 2) * camera.position.z) / window.innerHeight;
+
+    // update normalized mouse coords for raycasting
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+    // Hover label logic: show name when hovering a secondary node
+    raycaster.setFromCamera(mouse, camera);
+    const hoverIntersects = raycaster.intersectObjects(secondaryNodes);
+    if (hoverIntersects.length > 0) {
+        const hovered = hoverIntersects[0].object;
+        const data = hovered.userData || {};
+        if (hoverLabel) {
+            hoverLabel.style.display = 'block';
+            hoverLabel.innerText = data.name || 'Drill';
+            hoverLabel.style.left = e.clientX + 'px';
+            hoverLabel.style.top = e.clientY + 'px';
+            // color the label border to match neighborhood if available
+            if (data.color) hoverLabel.style.borderColor = '#' + data.color.toString(16).padStart(6, '0');
+        }
+    } else {
+        if (hoverLabel) hoverLabel.style.display = 'none';
+    }
 
     if (selectedNode) {
         const dx = e.movementX * scale;
@@ -179,7 +253,11 @@ window.addEventListener('mousemove', (e) => {
         });
         
         // HQ Line updates
-        selectedNode.mainLine.geometry.setFromPoints([new THREE.Vector3(0,0,0), selectedNode.position]);
+            const r = selectedNode.userData?.bubbleRadius || 0;
+            const endPos = selectedNode.position.clone().setLength(
+                Math.max(selectedNode.position.length() - (2 * r), 0)
+            );
+            selectedNode.mainLine.geometry.setFromPoints([new THREE.Vector3(0,0,0), endPos]);
         selectedNode.mainLine.geometry.attributes.position.needsUpdate = true;
         
         // BUBBLE moves automatically because it is a child of selectedNode
@@ -192,13 +270,55 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', () => { selectedNode = null; isPanning = false; });
+// Helper: unproject mouse to world position on z=0 plane
+function getMouseWorldPos(clientX, clientY) {
+    const vec = new THREE.Vector3(
+        (clientX / window.innerWidth) * 2 - 1,
+        -(clientY / window.innerHeight) * 2 + 1,
+        0.5
+    );
+    vec.unproject(camera);
+    const dir = vec.sub(camera.position).normalize();
+    const distance = -camera.position.z / dir.z;
+    return camera.position.clone().add(dir.multiplyScalar(distance));
+}
+
 window.addEventListener('wheel', (e) => {
+    // world point under mouse before zoom
+    const before = getMouseWorldPos(e.clientX, e.clientY);
+
     camera.position.z += e.deltaY * 0.05;
     camera.position.z = THREE.MathUtils.clamp(camera.position.z, 15, 120);
+
+    // world point under mouse after zoom
+    const after = getMouseWorldPos(e.clientX, e.clientY);
+
+    // shift camera so the point stays under the cursor
+    if (before && after) {
+        const shift = before.clone().sub(after);
+        camera.position.add(shift);
+    }
+
+    // Auto-hide info panel when zoomed out past the UI threshold
+    const panel = document.getElementById('info-panel');
+    if (panel && camera.position.z > UI_ZOOM_THRESHOLD) panel.style.display = 'none';
 });
 
 function animate() {
     requestAnimationFrame(animate);
+    // Animate dashed offset to give a flow illusion on primary connections
+    secondaryNodes.forEach((sn) => {
+        if (sn.mainLine && sn.mainLine.material && sn.mainLine.material.dashOffset !== undefined) {
+            sn.mainLine.material.dashOffset -= 0.02;
+            sn.mainLine.material.needsUpdate = true;
+        }
+        // subtle pulse: ensure tertiary lines remain faint but match color
+        if (sn.linesToTertiary) {
+            sn.linesToTertiary.forEach(tl => {
+                tl.material.opacity = Math.max(0.03, Math.min(0.08, tl.material.opacity));
+            });
+        }
+    });
     renderer.render(scene, camera);
 }
 animate();
