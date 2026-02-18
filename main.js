@@ -258,6 +258,8 @@ window.addEventListener('mousemove', (e) => {
                 Math.max(selectedNode.position.length() - (2 * r), 0)
             );
             selectedNode.mainLine.geometry.setFromPoints([new THREE.Vector3(0,0,0), endPos]);
+            selectedNode.mainLine.computeLineDistances();
+            
         selectedNode.mainLine.geometry.attributes.position.needsUpdate = true;
         
         // BUBBLE moves automatically because it is a child of selectedNode
@@ -271,6 +273,7 @@ window.addEventListener('mousemove', (e) => {
 
 window.addEventListener('mouseup', () => { selectedNode = null; isPanning = false; });
 // Helper: unproject mouse to world position on z=0 plane
+// 1. FIXED: Reliable world position calculation
 function getMouseWorldPos(clientX, clientY) {
     const vec = new THREE.Vector3(
         (clientX / window.innerWidth) * 2 - 1,
@@ -278,47 +281,62 @@ function getMouseWorldPos(clientX, clientY) {
         0.5
     );
     vec.unproject(camera);
-    const dir = vec.sub(camera.position).normalize();
-    const distance = -camera.position.z / dir.z;
-    return camera.position.clone().add(dir.multiplyScalar(distance));
+    
+    // We want the intersection with the Z=0 plane
+    // Formula: Ray intersection with plane
+    const pos = camera.position;
+    const dir = vec.sub(pos).normalize();
+    const distance = -pos.z / dir.z;
+    
+    return pos.clone().add(dir.multiplyScalar(distance));
 }
 
+// 2. FIXED: Stable Zoom-to-Mouse
 window.addEventListener('wheel', (e) => {
-    // world point under mouse before zoom
-    const before = getMouseWorldPos(e.clientX, e.clientY);
+    e.preventDefault(); // Prevent page scrolling
 
-    camera.position.z += e.deltaY * 0.05;
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, 15, 120);
+    // Get the point the mouse is hovering over BEFORE the zoom
+    const pointBefore = getMouseWorldPos(e.clientX, e.clientY);
 
-    // world point under mouse after zoom
-    const after = getMouseWorldPos(e.clientX, e.clientY);
+    // Perform the actual zoom (clamped)
+    const zoomAmount = e.deltaY * 0.04;
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z + zoomAmount, 10, 100);
+    
+    // Crucial: Update matrices so the 'After' calculation is accurate
+    camera.updateMatrixWorld();
 
-    // shift camera so the point stays under the cursor
-    if (before && after) {
-        const shift = before.clone().sub(after);
-        camera.position.add(shift);
-    }
+    // Get the point under the mouse AFTER the zoom
+    const pointAfter = getMouseWorldPos(e.clientX, e.clientY);
 
-    // Auto-hide info panel when zoomed out past the UI threshold
+    // Shift camera X and Y to keep the 'before' point under the cursor
+    camera.position.x += (pointBefore.x - pointAfter.x);
+    camera.position.y += (pointBefore.y - pointAfter.y);
+
+    // UI visibility threshold
     const panel = document.getElementById('info-panel');
-    if (panel && camera.position.z > UI_ZOOM_THRESHOLD) panel.style.display = 'none';
-});
+    if (panel) {
+        panel.style.display = camera.position.z > UI_ZOOM_THRESHOLD ? 'none' : panel.style.display;
+    }
+}, { passive: false });
 
+// 3. FIXED: Smooth Animation & Flow
 function animate() {
     requestAnimationFrame(animate);
-    // Animate dashed offset to give a flow illusion on primary connections
+    
     secondaryNodes.forEach((sn) => {
-        if (sn.mainLine && sn.mainLine.material && sn.mainLine.material.dashOffset !== undefined) {
-            sn.mainLine.material.dashOffset -= 0.02;
-            sn.mainLine.material.needsUpdate = true;
+        // Flowing dashed lines (HQ to Digger)
+        if (sn.mainLine && sn.mainLine.material.type === 'LineDashedMaterial') {
+            sn.mainLine.material.dashOffset -= 0.015;
         }
-        // subtle pulse: ensure tertiary lines remain faint but match color
-        if (sn.linesToTertiary) {
-            sn.linesToTertiary.forEach(tl => {
-                tl.material.opacity = Math.max(0.03, Math.min(0.08, tl.material.opacity));
-            });
-        }
+        
+        // Dynamic opacity: Fade tertiary lines out when zooming out
+        // This keeps the map from looking like a giant white blob
+        const opacityScale = THREE.MathUtils.mapLinear(camera.position.z, 15, 60, 0.1, 0.01);
+        sn.linesToTertiary.forEach(tl => {
+            tl.material.opacity = THREE.MathUtils.clamp(opacityScale, 0.01, 0.1);
+        });
     });
+    
     renderer.render(scene, camera);
 }
 animate();
