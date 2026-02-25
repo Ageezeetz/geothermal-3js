@@ -292,9 +292,29 @@ window.addEventListener('mousedown', (e) => {
     const hqHit = raycaster.intersectObject(hq);
     const companyHits = raycaster.intersectObjects(secondaryNodes);
 
-    if (hqHit.length > 0) window.showPitchDeck();
-    else if (companyHits.length > 0) window.showCompanyHUD(companyHits[0].object.userData, companyHits[0].object.position);
-    else if (pitchOverlay.style.display !== 'flex') window.resetCamera();
+    if (hqHit.length > 0) {
+        window.showPitchDeck();
+    } 
+    else if (companyHits.length > 0) {
+        const clickedNode = companyHits[0].object;
+        const d = clickedNode.userData;
+
+        if (d.name !== "Emerging Partner") {
+            // MAIN COMPANIES: Zoom in AND show UI
+            window.showCompanyHUD(d, clickedNode.position);
+        } else {
+            isAutopilot = true;
+            // Use the same math from showCompanyHUD to calculate zoom depth
+            const zoomZ = (d.actualR * 1.25) / Math.tan((camera.fov * Math.PI / 180) / 2);
+            targetCamPos.set(clickedNode.position.x, clickedNode.position.y, zoomZ);
+            
+            // Hide the HUD if it was already open from a previous click
+            hud.style.display = 'none';
+        }
+    } 
+    else if (pitchOverlay.style.display !== 'flex') {
+        window.resetCamera();
+    }
 });
 
 window.addEventListener('wheel', (e) => {
@@ -327,7 +347,7 @@ window.addEventListener('mousemove', (e) => {
 
 // --- ADD THIS ABOVE THE ANIMATE FUNCTION ---
 let spawnedCount = 0;
-const maxDynamicNodes = 50; 
+const maxDynamicNodes = 100; 
 
 const minDistanceBetweenNodes = 45; // Adjust this to control the "gap" size
 
@@ -350,7 +370,7 @@ function spawnRandomNode() {
         });
         
         attempts++;
-    } while (tooClose && attempts < 20); // Stop trying after 20 fails to prevent freezing
+    } while (tooClose && attempts < 30); // Stop trying after 20 fails to prevent freezing
 
     const randomData = {
         name: "Emerging Partner",
@@ -365,7 +385,7 @@ function spawnRandomNode() {
         houseCount: 5, 
         
         // Nodes can be small explorers or large major hubs
-        targetScale: 8 + Math.random() * 10, 
+        targetScale: 20 + Math.random() * 10, 
         coords: { x, y }
     };
 
@@ -434,35 +454,25 @@ const spawnInterval = 10; // New node every 10 units of zoom
 function animate() {
     requestAnimationFrame(animate);
 
-    // 1. Slow star rotation
-    stars.rotation.y += 0.0001;
+    stars.rotation.y += 0.0001; //slowly rotates the star background
 
-    // 2. Autopilot logic (Existing)
-    if (isAutopilot) {
+    if (isAutopilot) { //automatically slows to a stop on zoom
         camera.position.lerp(targetCamPos, 0.08);
         if (camera.position.distanceTo(targetCamPos) < 0.1) isAutopilot = false;
     }
 
-// --- DYNAMIC PROGRESSIVE SPAWN ---
-    // Every time the camera moves further out by 'spawnInterval', a new node appears
-    if (camera.position.z > lastSpawnZ + spawnInterval && spawnedCount < maxDynamicNodes) {
+    if (camera.position.z > lastSpawnZ + spawnInterval && spawnedCount < maxDynamicNodes) { //spawns a new node if it zooms out and has not spawned the given max amount
         spawnRandomNode();
         spawnedCount++;
         lastSpawnZ = camera.position.z;
     }
 
-    // 4. Update nodes (Existing scaling logic)
     secondaryNodes.forEach(n => {
-        // 1. Fade Appearance Effect
-        if (n.material.opacity < 1) {
-            n.material.opacity += 0.02; // Fade in speed
+        if (n.material.opacity < 1) { //if not fully seen, fade in slowly
+            n.material.opacity += 0.01;
             if (n.mainLine) n.mainLine.material.opacity = n.material.opacity * 0.3;
-            if (n.circle) n.circle.material.opacity = n.material.opacity * 0.5;
-            
-            // Fade in all associated houses
-            if (n.houses) {
-                n.houses.forEach(h => h.material.opacity = n.material.opacity);
-            }
+            if (n.circle) n.circle.material.opacity = n.material.opacity * 0.3;
+            if (n.houses) n.houses.forEach(h => h.material.opacity = n.material.opacity + 0.02);
         }
 
     // 2. Dynamic Scaling (Discovery + Hover)
