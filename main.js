@@ -94,9 +94,9 @@ const companyData = [
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x050505);
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0, 150);
+camera.position.set(0, 0, 125);
 
-let targetCamPos = new THREE.Vector3(0, 0, 150);
+let targetCamPos = new THREE.Vector3(0, 0, 125);
 let isAutopilot = false;
 
 const renderer = new THREE.WebGLRenderer({ 
@@ -128,6 +128,26 @@ hq.renderOrder = 3;
 hq.userData = { isHQ: true };
 scene.add(hq);
 
+// --- STARFIELD ---
+const starGeometry = new THREE.BufferGeometry();
+const starCount = 3000;
+const posArray = new Float32Array(starCount * 3);
+
+for (let i = 0; i < starCount * 3; i++) {
+    posArray[i] = (Math.random() - 0.5) * 1000;
+}
+
+starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+const starMaterial = new THREE.PointsMaterial({
+    size: 1,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1
+});
+
+const stars = new THREE.Points(starGeometry, starMaterial);
+scene.add(stars);
+
 const secondaryNodes = [];
 const houseMat = new THREE.SpriteMaterial({ 
     map: createEmojiTexture('🏠'), 
@@ -149,9 +169,10 @@ companyData.forEach((data) => {
         new THREE.BufferGeometry().setFromPoints(curve.getPoints(64)),
         new THREE.LineBasicMaterial({ color: data.color, transparent: true, opacity: 0.4 })
     );
-    circumference.scale.set(0.175, 0.175, 1); 
+    circumference.scale.set(1, 1, 1); 
     circumference.raycast = () => null; 
-    secNode.add(circumference);
+    scene.add(circumference); 
+    circumference.position.set(data.coords.x, data.coords.y, 0);
 
     // Main connection lines
     const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]);
@@ -182,7 +203,7 @@ companyData.forEach((data) => {
 
 // --- 4. UI FUNCTIONS ---
 window.resetCamera = () => {
-    targetCamPos.set(0, 0, 150);
+    targetCamPos.set(0, 0, 125);
     isAutopilot = true;
     hud.style.display = 'none';
 };
@@ -195,7 +216,7 @@ window.closePitchDeck = () => {
 window.showCompanyHUD = (d, pos) => {
     if (!d || !d.name) return;
     isAutopilot = true;
-    targetCamPos.set(pos.x, pos.y, (d.actualR * 1.25) / Math.tan((camera.fov * Math.PI / 180) / 2));
+    targetCamPos.set(pos.x, pos.y, (d.actualR / Math.tan((camera.fov * Math.PI / 180) / 2)));
     hud.style.display = 'block';
     hud.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -212,7 +233,7 @@ window.showCompanyHUD = (d, pos) => {
 
 window.showPitchDeck = () => {
     isAutopilot = true;
-    targetCamPos.set(0, 0, 45);
+    targetCamPos.set(0, 0, 75);
     pitchOverlay.style.display = 'flex';
     pitchOverlay.innerHTML = `
         <div class="pitch-content">
@@ -284,15 +305,49 @@ window.addEventListener('wheel', (e) => {
 
 window.addEventListener('keydown', (e) => { if (e.key === "Escape") window.closePitchDeck(); });
 
-// --- 6. ANIMATION LOOP ---
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const companyHits = raycaster.intersectObjects(secondaryNodes);
+
+    // Reset hover state for all
+    secondaryNodes.forEach(n => n.userData.isHovered = false);
+
+    if (companyHits.length > 0) {
+        companyHits[0].object.userData.isHovered = true;
+        document.body.style.cursor = 'pointer';
+    } else {
+        document.body.style.cursor = 'default';
+    }
+});
+
 function animate() {
     requestAnimationFrame(animate);
+
     if (isAutopilot) {
         camera.position.lerp(targetCamPos, 0.08);
         if (camera.position.distanceTo(targetCamPos) < 0.1) isAutopilot = false;
     }
-    // Only animate dash offset for visual flow
-    secondaryNodes.forEach(n => { if (n.mainLine) n.mainLine.material.dashOffset -= 0.01; });
+
+    secondaryNodes.forEach(n => {
+        // Define base and target scales
+        const baseScale = 6;
+        const hoverScale = 9; // 1.5x larger
+        
+        // Determine which scale to move toward
+        const target = n.userData.isHovered ? hoverScale : baseScale;
+        
+        // Smoothly interpolate the current scale toward the target
+        const currentScale = n.scale.x;
+        const newScale = THREE.MathUtils.lerp(currentScale, target, 0.15);
+        n.scale.set(newScale, newScale, 1);
+
+        // Keep the dashed line moving
+        if (n.mainLine) n.mainLine.material.dashOffset -= 0.01;
+    });
+
     renderer.render(scene, camera);
 }
 animate();
