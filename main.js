@@ -103,7 +103,7 @@ const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: "high-performance" 
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); //when zoomed in, the quality of the objects becomes high detailed
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -121,7 +121,7 @@ function createEmojiTexture(emoji) {
 }
 
 // --- 3. OBJECT GENERATION ---
-const hq = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏢') }));
+const hq = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏢') })); //creates the headquarters
 hq.scale.set(8, 9, 1);
 hq.position.set(0, 0, 0);
 hq.renderOrder = 3;
@@ -129,7 +129,7 @@ hq.userData = { isHQ: true };
 scene.add(hq);
 
 // --- STARFIELD ---
-const starGeometry = new THREE.BufferGeometry();
+const starGeometry = new THREE.BufferGeometry(); //creates the star background
 const starCount = 3000;
 const posArray = new Float32Array(starCount * 3);
 
@@ -157,7 +157,7 @@ const houseMat = new THREE.SpriteMaterial({
 
 companyData.forEach((data) => {
     const r = Math.sqrt(data.bubbleRadius) * 2.5; 
-    const secNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture(data.emoji) }));
+    const secNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture(data.emoji) })); //creates a bubble around each company
     secNode.scale.set(6, 6, 1);
     secNode.position.set(data.coords.x, data.coords.y, 0);
     secNode.renderOrder = 2;
@@ -233,7 +233,7 @@ window.showCompanyHUD = (d, pos) => {
 
 window.showPitchDeck = () => {
     isAutopilot = true;
-    targetCamPos.set(0, 0, 75);
+    targetCamPos.set(0, 0, 125);
     pitchOverlay.style.display = 'flex';
     pitchOverlay.innerHTML = `
         <div class="pitch-content">
@@ -300,7 +300,9 @@ window.addEventListener('mousedown', (e) => {
 window.addEventListener('wheel', (e) => {
     if (pitchOverlay.style.display === 'flex') return; 
     isAutopilot = false; 
-    camera.position.z = Math.max(30, Math.min(camera.position.z + e.deltaY * 0.1, 400));
+    camera.position.z = Math.max(30, Math.min(camera.position.z + e.deltaY * 0.1, 1000));
+
+    console.log(camera.position.z);
 });
 
 window.addEventListener('keydown', (e) => { if (e.key === "Escape") window.closePitchDeck(); });
@@ -323,30 +325,156 @@ window.addEventListener('mousemove', (e) => {
     }
 });
 
+// --- ADD THIS ABOVE THE ANIMATE FUNCTION ---
+let spawnedCount = 0;
+const maxDynamicNodes = 50; 
+
+const minDistanceBetweenNodes = 45; // Adjust this to control the "gap" size
+
+function spawnRandomNode() {
+    let x, y, tooClose;
+    let attempts = 0;
+
+    // Try finding a spot that isn't crowded
+    do {
+        const angle = Math.random() * Math.PI * 2;
+        // Spread them out further: 50 to 250 units from center
+        const distance = 50 + Math.random() * 200; 
+        x = Math.cos(angle) * distance;
+        y = Math.sin(angle) * distance;
+
+        tooClose = secondaryNodes.some(n => {
+            const dx = n.position.x - x;
+            const dy = n.position.y - y;
+            return Math.sqrt(dx * dx + dy * dy) < minDistanceBetweenNodes;
+        });
+        
+        attempts++;
+    } while (tooClose && attempts < 20); // Stop trying after 20 fails to prevent freezing
+
+    const randomData = {
+        name: "Emerging Partner",
+        emoji: ["🔋", "⚙️", "🔌", "🔧", "🏗️", "⚡", "💎", "🌀"][Math.floor(Math.random() * 8)],
+        color: new THREE.Color().setHSL(Math.random(), 0.9, 0.6),
+        
+        // --- INCREASED VARIANCE ---
+        // Bubbles can now range from tiny (30) to massive (150)
+        bubbleRadius: 30 + Math.pow(Math.random(), 2) * 120, 
+        
+        // Houses now scale with the bubble size, plus a random "density" factor
+        houseCount: 5, 
+        
+        // Nodes can be small explorers or large major hubs
+        targetScale: 8 + Math.random() * 10, 
+        coords: { x, y }
+    };
+
+    const r = Math.sqrt(randomData.bubbleRadius) * 2.5;
+    // Calculate house count based on the actual area of the bubble
+    randomData.houseCount = Math.floor((r * r * 0.15) * (0.5 + Math.random()));
+    
+    // --- FADE SETUP ---
+    const nodeMat = new THREE.SpriteMaterial({ 
+        map: createEmojiTexture(randomData.emoji), 
+        transparent: true, 
+        opacity: 0 
+    });
+    const secNode = new THREE.Sprite(nodeMat);
+    
+    // BIGGER: targetScale 12 (twice the size of original nodes)
+    secNode.scale.set(0, 0, 0); 
+    secNode.position.set(x, y, 0);
+    secNode.userData = { ...randomData, actualR: r, isHovered: false, targetScale: 12 };
+
+    // --- CIRCLE (Fade In) ---
+    const circumference = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r).getPoints(64)),
+        new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0 })
+    );
+    circumference.position.set(x, y, 0);
+    scene.add(circumference);
+    secNode.circle = circumference;
+
+    // --- MAIN LINE (Fade In) ---
+    const mainLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]),
+        new THREE.LineDashedMaterial({ color: randomData.color, dashSize: 1, gapSize: 0.5, transparent: true, opacity: 0 })
+    );
+    mainLine.computeLineDistances();
+    scene.add(mainLine);
+    secNode.mainLine = mainLine;
+
+    // --- HOUSES (Fade In) ---
+    secNode.houses = [];
+    for (let i = 0; i < randomData.houseCount; i++) {
+        const hAngle = Math.random() * Math.PI * 2;
+        const hDist = r * (0.3 + Math.random() * 0.6);
+        const hMat = houseMat.clone();
+        hMat.opacity = 0;
+        const home = new THREE.Sprite(hMat);
+        home.scale.set(1.5, 1.5, 1);
+        home.position.set(x + Math.cos(hAngle) * hDist, y + Math.sin(hAngle) * hDist, 0);
+        scene.add(home);
+        secNode.houses.push(home);
+
+        const tLine = new THREE.Line (
+        new THREE.BufferGeometry().setFromPoints([secNode.position, home.position]),
+        new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0.15 })
+        );
+        scene.add(tLine);
+    }
+
+    scene.add(secNode);
+    secondaryNodes.push(secNode);
+}
+
+let lastSpawnZ = 125; 
+const spawnInterval = 10; // New node every 10 units of zoom
+
 function animate() {
     requestAnimationFrame(animate);
 
+    // 1. Slow star rotation
+    stars.rotation.y += 0.0001;
+
+    // 2. Autopilot logic (Existing)
     if (isAutopilot) {
         camera.position.lerp(targetCamPos, 0.08);
         if (camera.position.distanceTo(targetCamPos) < 0.1) isAutopilot = false;
     }
 
-    secondaryNodes.forEach(n => {
-        // Define base and target scales
-        const baseScale = 6;
-        const hoverScale = 9; // 1.5x larger
-        
-        // Determine which scale to move toward
-        const target = n.userData.isHovered ? hoverScale : baseScale;
-        
-        // Smoothly interpolate the current scale toward the target
-        const currentScale = n.scale.x;
-        const newScale = THREE.MathUtils.lerp(currentScale, target, 0.15);
-        n.scale.set(newScale, newScale, 1);
+// --- DYNAMIC PROGRESSIVE SPAWN ---
+    // Every time the camera moves further out by 'spawnInterval', a new node appears
+    if (camera.position.z > lastSpawnZ + spawnInterval && spawnedCount < maxDynamicNodes) {
+        spawnRandomNode();
+        spawnedCount++;
+        lastSpawnZ = camera.position.z;
+    }
 
-        // Keep the dashed line moving
-        if (n.mainLine) n.mainLine.material.dashOffset -= 0.01;
-    });
+    // 4. Update nodes (Existing scaling logic)
+    secondaryNodes.forEach(n => {
+        // 1. Fade Appearance Effect
+        if (n.material.opacity < 1) {
+            n.material.opacity += 0.02; // Fade in speed
+            if (n.mainLine) n.mainLine.material.opacity = n.material.opacity * 0.3;
+            if (n.circle) n.circle.material.opacity = n.material.opacity * 0.5;
+            
+            // Fade in all associated houses
+            if (n.houses) {
+                n.houses.forEach(h => h.material.opacity = n.material.opacity);
+            }
+        }
+
+    // 2. Dynamic Scaling (Discovery + Hover)
+    const baseScale = n.userData.targetScale || 6;
+    const hoverScale = baseScale * 1.5;
+    const target = n.userData.isHovered ? hoverScale : baseScale;
+    
+    const newScale = THREE.MathUtils.lerp(n.scale.x, target, 0.1);
+    n.scale.set(newScale, newScale, 1);
+
+    if (n.mainLine) n.mainLine.material.dashOffset -= 0.01;
+});
 
     renderer.render(scene, camera);
 }
