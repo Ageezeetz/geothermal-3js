@@ -25,32 +25,8 @@ const companyData = [
         houseCount: 150,
         emoji: "🤖",
         location: "Switzerland",
-        description: "The 'World's Strongest Worm'—a silent, automated 150kg drill redefining urban geothermal installation.",
-        bullets: ["300m shallow depth precision", "86% lower emission profile", "Single-worker remote control"]
-    },
-    {
-        id: "dig_energy",
-        name: "Dig Energy",
-        color: 0x00ffff,
-        coords: { x: -25, y: -25 },
-        bubbleRadius: 120, 
-        houseCount: 90,
-        emoji: "💧",
-        location: "USA (Texas)",
-        description: "Proprietary water-jet boring that slashes traditional drilling costs by 80% for decentralized energy.",
-        bullets: ["Hardware-as-a-Service model", "Water-jet boring tech", "Minimal surface footprint"]
-    },
-    {
-        id: "fervo_energy",
-        name: "Fervo Energy",
-        color: 0xff7a18,
-        coords: { x: -60, y: -5 },
-        bubbleRadius: 250, 
-        houseCount: 220,
-        emoji: "🔥",
-        location: "USA (Nevada)",
-        description: "A pioneer in horizontal drilling, turning hot rock into consistent, 24/7 carbon-free power.",
-        bullets: ["Fiber optic heat telemetry", "AI-optimized heat mining", "24/7 baseload reliability"]
+        description: "Developed 'Grabowski', a 150kg automated 'worm' drill designed to operate in basements and tight urban spaces.",
+        bullets: ["300m depth / 135mm diameter", "94% quieter than diesel rigs", "Plugs into standard 400V outlets"]
     },
     {
         id: "dandelion",
@@ -61,32 +37,56 @@ const companyData = [
         houseCount: 180,
         emoji: "🌻",
         location: "USA (Northeast)",
-        description: "Google X spinoff bringing geothermal to backyards by replacing gas furnaces with clean pumps.",
-        bullets: ["Residential heat-pump leader", "4x more efficient than gas", "Smart home ecosystem sync"]
+        description: "Google X spinoff and the largest US residential installer, utilizing high-velocity sonic drilling for backyards.",
+        bullets: ["Turnkey residential ground loops", "Proprietary 'Dandelion Geo' pump", "50-year ground loop warranty"]
     },
     {
         id: "celsius",
         name: "Celsius Energy",
         color: 0xff00ff,
-        coords: { x: 70, y: 10 },
+        coords: { x: 70, y: -25 },
         bubbleRadius: 140, 
         houseCount: 130,
         emoji: "🏙️",
-        location: "France",
-        description: "Specialists in slanted drilling for dense cities, allowing retrofits without extra land use.",
-        bullets: ["Inclined probe technology", "90% carbon footprint reduction", "Urban retrofit optimization"]
+        location: "France (SLB Venture)",
+        description: "Specialists in 'Star Drilling'—a slanted, fan-shaped drilling method that fits under existing parking lots.",
+        bullets: ["Inclined probe technology", "90% smaller surface footprint", "Optimized for urban retrofitting"]
     },
     {
-        id: "heat_transport",
-        name: "District Loop Co.",
+        id: "eavor",
+        name: "Eavor Technologies",
+        color: 0x00ffff,
+        coords: { x: -25, y: -25 },
+        bubbleRadius: 200, 
+        houseCount: 140,
+        emoji: "🌀",
+        location: "Canada / Germany",
+        description: "Pioneered the 'Eavor-Loop', a massive underground radiator that circulates fluid in a totally closed loop.",
+        bullets: ["No fracking or water use", "Scalable baseload heat/power", "Sedimentary rock specialist"]
+    },
+    {
+        id: "terra_thermal",
+        name: "Terra Thermal",
+        color: 0xff7a18,
+        coords: { x: -60, y: -5 },
+        bubbleRadius: 120, 
+        houseCount: 80,
+        emoji: "🔥",
+        location: "United Kingdom",
+        description: "Focuses on 'Heat-as-a-Service' for large-scale social housing, using shared ground loop arrays (SGLAs).",
+        bullets: ["Shared community heat grids", "Eliminates fuel poverty", "Low-temp district heating"]
+    },
+    {
+        id: "gt_energy",
+        name: "GT Energy",
         color: 0xffffff,
         coords: { x: 5, y: -40 },
         bubbleRadius: 110, 
-        houseCount: 250, 
-        emoji: "🏘️",
-        location: "Global South focus",
-        description: "Building the infrastructure to transport heat across low-income housing blocks.",
-        bullets: ["Heat-sharing network grid", "Energy poverty reduction", "Scalable community heating"]
+        houseCount: 100, 
+        emoji: "🏗️",
+        location: "Ireland / UK",
+        description: "Deep-shallow specialists focused on large-scale urban heat networks and city-center district energy hubs.",
+        bullets: ["Multi-megawatt heat delivery", "Strategic Dublin/UK pipeline", "Acquired by Star Energy Group"]
     }
 ];
 
@@ -99,11 +99,16 @@ camera.position.set(0, 0, 125);
 let targetCamPos = new THREE.Vector3(0, 0, 125);
 let isAutopilot = false;
 
+// --- CUTSCENE STATE ---
+let cutsceneActive = false;
+let cutscenePhase = 0; 
+const MAX_ZOOM = 1000; 
+
 const renderer = new THREE.WebGLRenderer({ 
     antialias: true,
     powerPreference: "high-performance" 
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); //when zoomed in, the quality of the objects becomes high detailed
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -121,377 +126,324 @@ function createEmojiTexture(emoji) {
 }
 
 // --- 3. OBJECT GENERATION ---
-const hq = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏢') })); //creates the headquarters
+const hq = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture('🏢') }));
 hq.scale.set(8, 9, 1);
 hq.position.set(0, 0, 0);
 hq.renderOrder = 3;
 hq.userData = { isHQ: true };
 scene.add(hq);
 
-// --- STARFIELD ---
-const starGeometry = new THREE.BufferGeometry(); //creates the star background
+const starGeometry = new THREE.BufferGeometry();
 const starCount = 3000;
 const posArray = new Float32Array(starCount * 3);
-
-for (let i = 0; i < starCount * 3; i++) {
-    posArray[i] = (Math.random() - 0.5) * 1000;
-}
-
+for (let i = 0; i < starCount * 3; i++) { posArray[i] = (Math.random() - 0.5) * 1000; }
 starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-const starMaterial = new THREE.PointsMaterial({
-    size: 1,
-    color: 0xffffff,
-    transparent: true,
-    opacity: 1
-});
-
+const starMaterial = new THREE.PointsMaterial({ size: 1, color: 0xffffff, transparent: true, opacity: 1 });
 const stars = new THREE.Points(starGeometry, starMaterial);
 scene.add(stars);
 
 const secondaryNodes = [];
-const houseMat = new THREE.SpriteMaterial({ 
-    map: createEmojiTexture('🏠'), 
-    alphaTest: 0.5, 
-    transparent: false 
-});
+const houseMat = new THREE.SpriteMaterial({ map: createEmojiTexture('🏠'), alphaTest: 0.5, transparent: true });
 
 companyData.forEach((data) => {
     const r = Math.sqrt(data.bubbleRadius) * 2.5; 
-    const secNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture(data.emoji) })); //creates a bubble around each company
+    const secNode = new THREE.Sprite(new THREE.SpriteMaterial({ map: createEmojiTexture(data.emoji) }));
     secNode.scale.set(6, 6, 1);
     secNode.position.set(data.coords.x, data.coords.y, 0);
     secNode.renderOrder = 2;
     secNode.userData = { ...data, actualR: r };
 
-    // Circle Outline (Non-interactable)
-    const curve = new THREE.EllipseCurve(0, 0, r, r);
     const circumference = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(curve.getPoints(64)),
+        new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r).getPoints(64)),
         new THREE.LineBasicMaterial({ color: data.color, transparent: true, opacity: 0.4 })
     );
-    circumference.scale.set(1, 1, 1); 
-    circumference.raycast = () => null; 
-    scene.add(circumference); 
     circumference.position.set(data.coords.x, data.coords.y, 0);
+    scene.add(circumference); 
+    secNode.circle = circumference;
 
-    // Main connection lines
-    const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]);
-    const mainLine = new THREE.Line(lineGeom, new THREE.LineDashedMaterial({ color: data.color, dashSize: 1, gapSize: 0.5, transparent: true, opacity: 0.5 }));
+    const mainLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]),
+        new THREE.LineDashedMaterial({ color: data.color, dashSize: 1, gapSize: 0.5, transparent: true, opacity: 0.5 })
+    );
     mainLine.computeLineDistances();
     scene.add(mainLine);
     secNode.mainLine = mainLine;
 
-    // Optimized Houses
+    secNode.houses = [];
     for (let i = 0; i < data.houseCount; i++) {
         const angle = Math.random() * Math.PI * 2;
         const dist = r * (0.3 + Math.random() * 0.6); 
-        const home = new THREE.Sprite(houseMat);
+        const home = new THREE.Sprite(houseMat.clone());
         home.scale.set(1.5, 1.5, 1);
         home.position.set(secNode.position.x + Math.cos(angle) * dist, secNode.position.y + Math.sin(angle) * dist, 0);
-        home.raycast = () => null;
         scene.add(home);
         
         const tLine = new THREE.Line(
             new THREE.BufferGeometry().setFromPoints([secNode.position, home.position]),
+            // FIXED: Reference to 'data.color' instead of 'randomData.color'
             new THREE.LineBasicMaterial({ color: data.color, transparent: true, opacity: 0.15 })
         );
         scene.add(tLine);
+        home.userData.myLine = tLine; // Link the line to the house
+        secNode.houses.push(home);
     }
     scene.add(secNode);
     secondaryNodes.push(secNode);
 });
 
 // --- 4. UI FUNCTIONS ---
-window.resetCamera = () => {
-    targetCamPos.set(0, 0, 125);
-    isAutopilot = true;
-    hud.style.display = 'none';
-};
-
-window.closePitchDeck = () => {
-    pitchOverlay.style.display = 'none';
-    window.resetCamera();
-};
-
+window.resetCamera = () => { targetCamPos.set(0, 0, 125); isAutopilot = true; hud.style.display = 'none'; };
+window.closePitchDeck = () => { pitchOverlay.style.display = 'none'; window.resetCamera(); };
 window.showCompanyHUD = (d, pos) => {
     if (!d || !d.name) return;
     isAutopilot = true;
     targetCamPos.set(pos.x, pos.y, (d.actualR / Math.tan((camera.fov * Math.PI / 180) / 2)));
     hud.style.display = 'block';
-    hud.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h2 class="hud-title">${d.name} ${d.emoji}</h2>
-            <span onclick="window.resetCamera()" style="cursor:pointer; font-size:18px;">✕</span>
-        </div>
-        <div class="hud-location">${d.location}</div>
-        <div class="hud-desc">${d.description}</div>
-        <ul class="hud-list">
-            ${d.bullets.map(b => `<li>${b}</li>`).join('')}
-        </ul>
-    `;
+    hud.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><h2 class="hud-title">${d.name} ${d.emoji}</h2><span onclick="window.resetCamera()" style="cursor:pointer; font-size:18px;">✕</span></div><div class="hud-location">${d.location}</div><div class="hud-desc">${d.description}</div><ul class="hud-list">${d.bullets.map(b => `<li>${b}</li>`).join('')}</ul>`;
 };
 
-window.showPitchDeck = () => {
-    isAutopilot = true;
-    targetCamPos.set(0, 0, 125);
-    pitchOverlay.style.display = 'flex';
-    pitchOverlay.innerHTML = `
-        <div class="pitch-content">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid rgba(0,255,255,0.2); padding-bottom:20px;">
-                <div>
-                    <h1 style="margin:0; color:cyan; font-size:32px;">GEOCORE GLOBAL</h1>
-                    <p style="margin:5px 0 0 0; color:#888; font-size:14px;">Baseload Energy Distribution</p>
-                </div>
-                <button class="close-btn" onclick="window.closePitchDeck()">ESC to Close</button>
-            </div>
-            <div style="margin-top:30px;">
-                <p style="font-size:18px; line-height:1.8; color:#eee;">
-                    The world doesn't just need more energy—it needs <b>consistent</b> power. Geothermal is the only source that never stops, regardless of weather.
-                </p>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:35px; margin-top:30px;">
-                    <section>
-                        <h3 style="margin-top:0;">The Strategy</h3>
-                        <p style="font-size:14px; color:#cbd5e0; line-height:1.7;">
-                            By investing in shallow-drilling today, we secure a first-mover advantage. We prepare for the inevitable future of renewable heat while others are still reacting to it.
-                        </p>
-                    </section>
-                    <section>
-                        <h3 style="margin-top:0;">The Impact</h3>
-                        <p style="font-size:14px; color:#cbd5e0; line-height:1.7;">
-                            Widespread geothermal makes heating affordable. We provide reliable energy to those struggling financially, ensuring clean heat is accessible for all.
-                        </p>
-                    </section>
-                </div>
-                <div style="margin-top:40px; padding:25px; background:rgba(0,255,255,0.05); border-radius:15px; border:1px solid rgba(0,255,255,0.1);">
-                    <h3 style="margin-top:0;">Our Ecosystem</h3>
-                    <p style="font-size:14px; line-height:1.8; margin:0;">
-                        We funnel investment into elite drilling partners. In exchange, we receive a share of the energy production—creating a global, resilient supply network for our customers.
-                    </p>
-                </div>
-            </div>
-        </div>
-    `;
-    // Click outside logic
-    pitchOverlay.onclick = (e) => { if(e.target === pitchOverlay) window.closePitchDeck(); };
-};
-
-// --- 5. INTERACTION EVENTS ---
+// --- 5. INTERACTION & CUTSCENE TRIGGER ---
 window.addEventListener('mousedown', (e) => {
-    // If we click the dark overlay background, reset
-    if (e.target === pitchOverlay) {
-        window.closePitchDeck();
-        return;
-    }
-    // Only raycast if clicking the canvas
+    if (e.target === pitchOverlay) { window.closePitchDeck(); return; }
     if (e.target !== renderer.domElement) return;
-
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-
     const hqHit = raycaster.intersectObject(hq);
     const companyHits = raycaster.intersectObjects(secondaryNodes);
-
-    if (hqHit.length > 0) {
-        window.showPitchDeck();
-    } 
-    else if (companyHits.length > 0) {
-        const clickedNode = companyHits[0].object;
-        const d = clickedNode.userData;
-
-        if (d.name !== "Emerging Partner") {
-            // MAIN COMPANIES: Zoom in AND show UI
-            window.showCompanyHUD(d, clickedNode.position);
-        } else {
-            isAutopilot = true;
-            // Use the same math from showCompanyHUD to calculate zoom depth
-            const zoomZ = (d.actualR * 1.25) / Math.tan((camera.fov * Math.PI / 180) / 2);
-            targetCamPos.set(clickedNode.position.x, clickedNode.position.y, zoomZ);
-            
-            // Hide the HUD if it was already open from a previous click
-            hud.style.display = 'none';
-        }
-    } 
-    else if (pitchOverlay.style.display !== 'flex') {
-        window.resetCamera();
-    }
+    if (hqHit.length > 0) { /* show pitch deck logic */ } 
+    else if (companyHits.length > 0) { window.showCompanyHUD(companyHits[0].object.userData, companyHits[0].object.position); } 
+    else { window.resetCamera(); }
 });
 
+// SPACEBAR OR BUTTON TRIGGER
+window.addEventListener('keydown', (e) => { 
+    if (e.code === "Space" && !cutsceneActive) startExpansion();
+});
+
+// --- 8. MOUSE WHEEL ZOOM ---
 window.addEventListener('wheel', (e) => {
-    if (pitchOverlay.style.display === 'flex') return; 
-    isAutopilot = false; 
-    camera.position.z = Math.max(30, Math.min(camera.position.z + e.deltaY * 0.1, 1000));
+    // Disable manual zoom if the expansion animation is currently playing
+    if (cutsceneActive) return;
 
-    console.log(camera.position.z);
-});
+    // Stop any current autopilot (like returning from a company view) 
+    // if the user starts scrolling manually
+    isAutopilot = false;
 
-window.addEventListener('keydown', (e) => { if (e.key === "Escape") window.closePitchDeck(); });
-
-window.addEventListener('mousemove', (e) => {
-    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-
-    const companyHits = raycaster.intersectObjects(secondaryNodes);
-
-    // Reset hover state for all
-    secondaryNodes.forEach(n => n.userData.isHovered = false);
-
-    if (companyHits.length > 0) {
-        companyHits[0].object.userData.isHovered = true;
-        document.body.style.cursor = 'pointer';
+    // Determine zoom direction and speed
+    const zoomSpeed = 5;
+    if (e.deltaY > 0) {
+        // Scrolling Down -> Zoom Out
+        targetCamPos.z += zoomSpeed;
     } else {
-        document.body.style.cursor = 'default';
+        // Scrolling Up -> Zoom In
+        targetCamPos.z -= zoomSpeed;
     }
-});
 
-// --- ADD THIS ABOVE THE ANIMATE FUNCTION ---
+    // Constraints: Don't let the user zoom too far in or past the starfield
+    targetCamPos.z = Math.max(30, Math.min(targetCamPos.z, MAX_ZOOM));
+    
+    // Apply the movement to the camera position
+    // We update camera.position.z directly or use the existing lerp logic
+    // Using direct assignment for immediate tactile response:
+    camera.position.z = targetCamPos.z;
+}, { passive: true });
+
+// Add a simple button to your HTML and link it here
+window.startExpansion = () => {
+    if (cutsceneActive) return;
+
+    // Reset logic
+    spawnedCount = 0; 
+    lastSpawnZ = 125; 
+    
+    cutsceneActive = true;
+    cutscenePhase = 1;
+    hud.style.display = 'none';
+};
+
+// --- 6. DYNAMIC SPAWNING ---
 let spawnedCount = 0;
 const maxDynamicNodes = 100; 
-
-const minDistanceBetweenNodes = 45; // Adjust this to control the "gap" size
+let lastSpawnZ = 125; 
+const spawnInterval = 10;
 
 function spawnRandomNode() {
-    let x, y, tooClose;
-    let attempts = 0;
+    // Check if we already have a node at this index in the array
+    let secNode = secondaryNodes.find((n, index) => n.userData.isDynamic && index === (companyData.length + spawnedCount));
 
-    // Try finding a spot that isn't crowded
-    do {
-        const angle = Math.random() * Math.PI * 2;
-        // Spread them out further: 50 to 250 units from center
-        const distance = 50 + Math.random() * 200; 
-        x = Math.cos(angle) * distance;
-        y = Math.sin(angle) * distance;
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 100 + Math.random() * 300;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
 
-        tooClose = secondaryNodes.some(n => {
-            const dx = n.position.x - x;
-            const dy = n.position.y - y;
-            return Math.sqrt(dx * dx + dy * dy) < minDistanceBetweenNodes;
-        });
-        
-        attempts++;
-    } while (tooClose && attempts < 30); // Stop trying after 20 fails to prevent freezing
+    if (!secNode) {
+        // --- CREATE NEW NODE (Only runs the first time) ---
+        const randomData = {
+            name: "Emerging Partner",
+            isDynamic: true, // Tag to distinguish from main 6
+            emoji: ["🔋", "⚙️", "🔌", "🔧", "🏗️", "⚡"][Math.floor(Math.random() * 6)],
+            color: new THREE.Color().setHSL(Math.random(), 0.8, 0.6),
+            bubbleRadius: 40 + Math.random() * 60,
+            targetScale: 8 + Math.random() * 4
+        };
 
-    const randomData = {
-        name: "Emerging Partner",
-        emoji: ["🔋", "⚙️", "🔌", "🔧", "🏗️", "⚡", "💎", "🌀"][Math.floor(Math.random() * 8)],
-        color: new THREE.Color().setHSL(Math.random(), 0.9, 0.6),
-        
-        // --- INCREASED VARIANCE ---
-        // Bubbles can now range from tiny (30) to massive (150)
-        bubbleRadius: 30 + Math.pow(Math.random(), 2) * 120, 
-        
-        // Houses now scale with the bubble size, plus a random "density" factor
-        houseCount: 5, 
-        
-        // Nodes can be small explorers or large major hubs
-        targetScale: 20 + Math.random() * 10, 
-        coords: { x, y }
-    };
+        const r = Math.sqrt(randomData.bubbleRadius) * 2.5;
+        const nodeMat = new THREE.SpriteMaterial({ map: createEmojiTexture(randomData.emoji), transparent: true, opacity: 0 });
+        secNode = new THREE.Sprite(nodeMat);
+        secNode.userData = { ...randomData, actualR: r };
 
-    const r = Math.sqrt(randomData.bubbleRadius) * 2.5;
-    // Calculate house count based on the actual area of the bubble
-    randomData.houseCount = Math.floor((r * r * 0.15) * (0.5 + Math.random()));
-    
-    // --- FADE SETUP ---
-    const nodeMat = new THREE.SpriteMaterial({ 
-        map: createEmojiTexture(randomData.emoji), 
-        transparent: true, 
-        opacity: 0 
-    });
-    const secNode = new THREE.Sprite(nodeMat);
-    
-    // BIGGER: targetScale 12 (twice the size of original nodes)
-    secNode.scale.set(0, 0, 0); 
-    secNode.position.set(x, y, 0);
-    secNode.userData = { ...randomData, actualR: r, isHovered: false, targetScale: 12 };
-
-    // --- CIRCLE (Fade In) ---
-    const circumference = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r).getPoints(64)),
-        new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0 })
-    );
-    circumference.position.set(x, y, 0);
-    scene.add(circumference);
-    secNode.circle = circumference;
-
-    // --- MAIN LINE (Fade In) ---
-    const mainLine = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]),
-        new THREE.LineDashedMaterial({ color: randomData.color, dashSize: 1, gapSize: 0.5, transparent: true, opacity: 0 })
-    );
-    mainLine.computeLineDistances();
-    scene.add(mainLine);
-    secNode.mainLine = mainLine;
-
-    // --- HOUSES (Fade In) ---
-    secNode.houses = [];
-    for (let i = 0; i < randomData.houseCount; i++) {
-        const hAngle = Math.random() * Math.PI * 2;
-        const hDist = r * (0.3 + Math.random() * 0.6);
-        const hMat = houseMat.clone();
-        hMat.opacity = 0;
-        const home = new THREE.Sprite(hMat);
-        home.scale.set(1.5, 1.5, 1);
-        home.position.set(x + Math.cos(hAngle) * hDist, y + Math.sin(hAngle) * hDist, 0);
-        scene.add(home);
-        secNode.houses.push(home);
-
-        const tLine = new THREE.Line (
-        new THREE.BufferGeometry().setFromPoints([secNode.position, home.position]),
-        new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0.15 })
+        // Circle
+        const circumference = new THREE.LineLoop(
+            new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, r, r).getPoints(64)),
+            new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0 })
         );
-        scene.add(tLine);
-    }
+        scene.add(circumference);
+        secNode.circle = circumference;
 
-    scene.add(secNode);
-    secondaryNodes.push(secNode);
-}
+        // Main Line
+        const mainLine = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(x, y, 0)]),
+            new THREE.LineDashedMaterial({ color: randomData.color, dashSize: 1, gapSize: 0.5, transparent: true, opacity: 0 })
+        );
+        scene.add(mainLine);
+        secNode.mainLine = mainLine;
 
-let lastSpawnZ = 125; 
-const spawnInterval = 10; // New node every 10 units of zoom
-
-function animate() {
-    requestAnimationFrame(animate);
-
-    stars.rotation.y += 0.0001; //slowly rotates the star background
-
-    if (isAutopilot) { //automatically slows to a stop on zoom
-        camera.position.lerp(targetCamPos, 0.08);
-        if (camera.position.distanceTo(targetCamPos) < 0.1) isAutopilot = false;
-    }
-
-    if (camera.position.z > lastSpawnZ + spawnInterval && spawnedCount < maxDynamicNodes) { //spawns a new node if it zooms out and has not spawned the given max amount
-        spawnRandomNode();
-        spawnedCount++;
-        lastSpawnZ = camera.position.z;
-    }
-
-    secondaryNodes.forEach(n => {
-        if (n.material.opacity < 1) { //if not fully seen, fade in slowly
-            n.material.opacity += 0.01;
-            if (n.mainLine) n.mainLine.material.opacity = n.material.opacity * 0.3;
-            if (n.circle) n.circle.material.opacity = n.material.opacity * 0.3;
-            if (n.houses) n.houses.forEach(h => h.material.opacity = n.material.opacity + 0.02);
+        // Houses
+        secNode.houses = [];
+        for (let i = 0; i < 10; i++) {
+            const hAngle = Math.random() * Math.PI * 2;
+            const hDist = r * (0.4 + Math.random() * 0.5);
+            const home = new THREE.Sprite(houseMat.clone());
+            home.material.opacity = 0;
+            home.scale.set(1.2, 1.2, 1);
+            scene.add(home);
+            
+            const tLine = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)]),
+                new THREE.LineBasicMaterial({ color: randomData.color, transparent: true, opacity: 0 })
+            );
+            scene.add(tLine);
+            home.userData.myLine = tLine; 
+            secNode.houses.push(home);
         }
 
-    // 2. Dynamic Scaling (Discovery + Hover)
-    const baseScale = n.userData.targetScale || 6;
-    const hoverScale = baseScale * 1.5;
-    const target = n.userData.isHovered ? hoverScale : baseScale;
-    
-    const newScale = THREE.MathUtils.lerp(n.scale.x, target, 0.1);
-    n.scale.set(newScale, newScale, 1);
+        scene.add(secNode);
+        secondaryNodes.push(secNode);
+    }
 
-    if (n.mainLine) n.mainLine.material.dashOffset -= 0.01;
-});
+    // --- REFRESH/RESET NODE (Runs every time) ---
+    secNode.position.set(x, y, 0);
+    secNode.scale.set(0, 0, 0);
+    secNode.material.opacity = 0;
+    
+    if (secNode.circle) {
+        secNode.circle.position.set(x, y, 0);
+        secNode.circle.material.opacity = 0;
+    }
+    
+    if (secNode.mainLine) {
+        secNode.mainLine.geometry.setFromPoints([new THREE.Vector3(0, 0, 0), secNode.position]);
+        secNode.mainLine.material.opacity = 0;
+    }
+
+    if (secNode.houses) {
+        secNode.houses.forEach(h => {
+            const hAngle = Math.random() * Math.PI * 2;
+            const hDist = secNode.userData.actualR * (0.4 + Math.random() * 0.5);
+            h.position.set(x + Math.cos(hAngle) * hDist, y + Math.sin(hAngle) * hDist, 0);
+            h.material.opacity = 0;
+            if (h.userData.myLine) {
+                h.userData.myLine.geometry.setFromPoints([secNode.position, h.position]);
+                h.userData.myLine.material.opacity = 0;
+            }
+        });
+    }
+}
+
+// --- 7. ANIMATION LOOP ---
+function animate() {
+    requestAnimationFrame(animate);
+    stars.rotation.y += 0.0001;
+        if (cutscenePhase === 1) {
+            // INCREASED SPEED: Changed from 1.5 to 4.0 (or higher for "warp" speed)
+            const speed = 0.8 + (camera.position.z / 300); 
+                
+            camera.position.z += speed; 
+
+            // ADJUST SPAWN INTERVAL: 
+            // Since we are moving faster, we decrease the interval (e.g., to 5) 
+            // so nodes appear more frequently to match the high-speed travel.
+            const highSpeedInterval = 5; 
+
+            if (camera.position.z > lastSpawnZ + highSpeedInterval && spawnedCount < maxDynamicNodes) {
+                spawnRandomNode();
+                spawnedCount++;
+                lastSpawnZ = camera.position.z;
+            }
+
+            // End Phase 1 when limit reached
+            if (camera.position.z >= MAX_ZOOM) {
+                cutscenePhase = 2;
+            }
+        }
+        else if (cutscenePhase === 2) {
+            // SOFT RETURN: Lower lerp value (0.015) makes it glide in gently
+            camera.position.lerp(new THREE.Vector3(0, 0, 125), 0.015);
+            
+            // CLEANUP
+            secondaryNodes.forEach(n => {
+                if (n.userData.name === "Emerging Partner") {
+                    n.material.opacity -= 0.015;
+                    if (n.mainLine) n.mainLine.material.opacity -= 0.015;
+                    if (n.circle) n.circle.material.opacity -= 0.015;
+                    if (n.houses) n.houses.forEach(h => {
+                        h.material.opacity -= 0.015;
+                        if (h.userData.myLine) h.userData.myLine.material.opacity -= 0.015;
+                    });
+                }
+            });
+
+            if (camera.position.z <= 126) {
+                cutsceneActive = false;
+                cutscenePhase = 0;
+            }
+        } else if (isAutopilot) {
+            camera.position.lerp(targetCamPos, 0.08);
+            if (camera.position.distanceTo(targetCamPos) < 0.1) isAutopilot = false;
+        }
+
+    // GENERAL FADE & SCALE
+    secondaryNodes.forEach(n => {
+        // Only fade in during Phase 1 (Zoom Out) or Normal mode
+        if (!cutsceneActive || cutscenePhase === 1) {
+            if (n.material.opacity < 1) {
+                n.material.opacity += 0.02; // Speed of appearing
+                
+                if (n.mainLine) n.mainLine.material.opacity = n.material.opacity * 0.3;
+                if (n.circle) n.circle.material.opacity = n.material.opacity * 0.3;
+                
+                if (n.houses) {
+                    n.houses.forEach(h => {
+                        h.material.opacity = n.material.opacity;
+                        if (h.userData.myLine) {
+                            h.userData.myLine.material.opacity = n.material.opacity * 0.15;
+                        }
+                    });
+                }
+            }
+        }
+        
+        // Scale Logic (Existing)
+        const baseScale = n.userData.targetScale || 6;
+        const target = n.userData.isHovered ? baseScale * 1.5 : baseScale;
+        
+        // Only scale up if we aren't in Phase 2 (Cleanup)
+        if (cutscenePhase !== 2) {
+            n.scale.lerp(new THREE.Vector3(target, target, 1), 0.1);
+        }
+    });
 
     renderer.render(scene, camera);
 }
 animate();
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
