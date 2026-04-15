@@ -367,7 +367,7 @@ function animate() {
     stars.rotation.y += 0.0001;
         if (cutscenePhase === 1) {
             // INCREASED SPEED: Changed from 1.5 to 4.0 (or higher for "warp" speed)
-            const speed = 0.8 + (camera.position.z / 300); 
+            const speed = 0.1 + (camera.position.z / 300); 
                 
             camera.position.z += speed; 
 
